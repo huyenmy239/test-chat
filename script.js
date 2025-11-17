@@ -292,9 +292,198 @@
 // });
 
 // test
+// let ws = null;
+// let username = '';
+// let localStream = null;
+// let peers = {};
+// let videoGrid = document.getElementById('video-grid');
+// let chatBox = document.getElementById('chat-box');
+
+// // === JOIN ROOM ===
+// function joinRoom() {
+//   username = document.getElementById('username').value.trim();
+//   if (!username) return alert('Vui lòng nhập tên!');
+
+//   document.getElementById('login-container').style.display = 'none';
+//   document.getElementById('room-container').style.display = 'block';
+
+//   startLocalVideo().then(() => {
+//     connectWS();
+//   });
+// }
+
+// // === CONNECT WEBSOCKET ===
+// function connectWS() {
+//   ws = new WebSocket('ws://10.10.10.164:8000/ws/chat/');
+
+//   ws.onopen = () => {
+//     send({ type: 'join', username });
+//   };
+
+//   ws.onmessage = async (e) => {
+//     const data = JSON.parse(e.data);
+
+//     if (data.type === 'user_list') {
+//       data.users.forEach(u => createPeerConnection(u, true));
+
+//     } else if (data.type === 'joined') {
+//       createPeerConnection(data.username, false);
+
+//     } else if (data.type === 'webrtc_signal') {
+//       await handleSignaling(data);
+
+//     } else if (data.type === 'message') {
+//       addChatMessage(`${data.username}: ${data.message}`);
+
+//     } else if (data.type === 'left') {
+//       removePeer(data.username);
+//     }
+//   };
+
+//   ws.onclose = () => console.log("WS closed");
+// }
+
+// // === START CAMERA ===
+// async function startLocalVideo() {
+//   try {
+//     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+//     addVideo(username, localStream);
+//   } catch (e) {
+//     console.error("Camera error:", e);
+//   }
+// }
+
+// // === CREATE PEER ===
+// function createPeerConnection(targetUser, isInitiator) {
+//   if (peers[targetUser]) return;
+
+//   const pc = new RTCPeerConnection({
+//     iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+//   });
+
+//   peers[targetUser] = pc;
+
+//   if (localStream) {
+//     localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+//   }
+
+//   pc.ontrack = (e) => addVideo(targetUser, e.streams[0]);
+
+//   pc.onicecandidate = (e) => {
+//     if (e.candidate)
+//       send({ type: 'ice-candidate', target: targetUser, data: e.candidate });
+//   };
+
+//   if (isInitiator) {
+//     pc.createOffer()
+//       .then(offer => pc.setLocalDescription(offer))
+//       .then(() => send({
+//         type: 'offer',
+//         target: targetUser,
+//         data: pc.localDescription
+//       }));
+//   }
+// }
+
+// // === HANDLE SIGNALS ===
+// async function handleSignaling(data) {
+//   const { signal_type, from_user, data: s } = data;
+//   let pc = peers[from_user];
+
+//   if (!pc) {
+//     createPeerConnection(from_user, false);
+//     pc = peers[from_user];
+//   }
+
+//   if (signal_type === 'offer') {
+//     await pc.setRemoteDescription(s);
+//     const ans = await pc.createAnswer();
+//     await pc.setLocalDescription(ans);
+//     send({ type: 'answer', target: from_user, data: pc.localDescription });
+
+//   } else if (signal_type === 'answer') {
+//     await pc.setRemoteDescription(s);
+
+//   } else if (signal_type === 'ice-candidate') {
+//     if (s) await pc.addIceCandidate(s);
+//   }
+// }
+
+// // === ADD VIDEO ===
+// function addVideo(label, stream) {
+//   let el = document.getElementById('video-' + label);
+
+//   if (!el) {
+//     el = document.createElement('div');
+//     el.id = 'video-' + label;
+//     el.className = 'video-container';
+
+//     const video = document.createElement('video');
+//     video.autoplay = true;
+//     video.playsInline = true;
+//     video.muted = label === username;
+
+//     el.appendChild(video);
+
+//     const span = document.createElement('div');
+//     span.className = 'video-label';
+//     span.textContent = label === username ? 'Bạn' : label;
+//     el.appendChild(span);
+
+//     videoGrid.appendChild(el);
+//   }
+
+//   const videoEl = el.querySelector('video');
+//   if (videoEl.srcObject !== stream) videoEl.srcObject = stream;
+// }
+
+// // === REMOVE PEER ===
+// function removePeer(user) {
+//   const el = document.getElementById('video-' + user);
+//   if (el) el.remove();
+
+//   if (peers[user]) {
+//     peers[user].close();
+//     delete peers[user];
+//   }
+// }
+
+// // === SEND WS MESSAGE ===
+// function send(data) {
+//   if (ws && ws.readyState === WebSocket.OPEN)
+//     ws.send(JSON.stringify(data));
+// }
+
+// // === CHAT ===
+// function sendMessage() {
+//   const msg = document.getElementById('message').value.trim();
+//   if (!msg) return;
+//   send({ type: 'message', message: msg });
+//   document.getElementById('message').value = '';
+// }
+
+// function addChatMessage(msg) {
+//   const item = document.createElement('div');
+//   item.textContent = msg;
+//   chatBox.appendChild(item);
+//   chatBox.scrollTop = chatBox.scrollHeight;
+// }
+
+// // === LEAVE ROOM ===
+// function leaveRoom() {
+//   send({ type: 'leave' });
+//   ws.close();
+//   location.reload();
+// }
+
+// final
+
 let ws = null;
 let username = '';
 let localStream = null;
+let screenStream = null;
+let usingScreen = false;
+
 let peers = {};
 let videoGrid = document.getElementById('video-grid');
 let chatBox = document.getElementById('chat-box');
@@ -307,18 +496,14 @@ function joinRoom() {
   document.getElementById('login-container').style.display = 'none';
   document.getElementById('room-container').style.display = 'block';
 
-  startLocalVideo().then(() => {
-    connectWS();
-  });
+  startLocalVideo().then(() => connectWS());
 }
 
 // === CONNECT WEBSOCKET ===
 function connectWS() {
   ws = new WebSocket('ws://10.10.10.164:8000/ws/chat/');
 
-  ws.onopen = () => {
-    send({ type: 'join', username });
-  };
+  ws.onopen = () => send({ type: 'join', username });
 
   ws.onmessage = async (e) => {
     const data = JSON.parse(e.data);
@@ -363,9 +548,8 @@ function createPeerConnection(targetUser, isInitiator) {
 
   peers[targetUser] = pc;
 
-  if (localStream) {
-    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-  }
+  // Add tracks
+  localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
   pc.ontrack = (e) => addVideo(targetUser, e.streams[0]);
 
@@ -374,18 +558,21 @@ function createPeerConnection(targetUser, isInitiator) {
       send({ type: 'ice-candidate', target: targetUser, data: e.candidate });
   };
 
+  // Create offer
   if (isInitiator) {
     pc.createOffer()
       .then(offer => pc.setLocalDescription(offer))
-      .then(() => send({
-        type: 'offer',
-        target: targetUser,
-        data: pc.localDescription
-      }));
+      .then(() =>
+        send({
+          type: 'offer',
+          target: targetUser,
+          data: pc.localDescription
+        })
+      );
   }
 }
 
-// === HANDLE SIGNALS ===
+// === HANDLE WEBRTC SIGNALING ===
 async function handleSignaling(data) {
   const { signal_type, from_user, data: s } = data;
   let pc = peers[from_user];
@@ -409,7 +596,7 @@ async function handleSignaling(data) {
   }
 }
 
-// === ADD VIDEO ===
+// === ADD VIDEO TO UI ===
 function addVideo(label, stream) {
   let el = document.getElementById('video-' + label);
 
@@ -474,4 +661,84 @@ function leaveRoom() {
   send({ type: 'leave' });
   ws.close();
   location.reload();
+}
+
+//
+// ===========================================================
+//                  🔥 BỔ SUNG TÍNH NĂNG MỚI 🔥
+// ===========================================================
+//
+
+// === TOGGLE MIC ===
+function toggleMic() {
+  const track = localStream.getAudioTracks()[0];
+  track.enabled = !track.enabled;
+
+  document.getElementById('mic-btn').innerText =
+    track.enabled ? "Mic On" : "Mic Off";
+}
+
+// === TOGGLE CAMERA ===
+function toggleCam() {
+  const track = localStream.getVideoTracks()[0];
+  track.enabled = !track.enabled;
+
+  document.getElementById('cam-btn').innerText =
+    track.enabled ? "Cam On" : "Cam Off";
+}
+
+// === SHARE SCREEN ===
+async function toggleScreen() {
+  if (!usingScreen) {
+    try {
+      screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+
+      const screenTrack = screenStream.getVideoTracks()[0];
+
+      // Thay thế track video cho tất cả peer
+      for (let user in peers) {
+        const sender = peers[user]
+          .getSenders()
+          .find(s => s.track.kind === 'video');
+        sender.replaceTrack(screenTrack);
+      }
+
+      addVideo(username, screenStream);
+
+      screenTrack.onended = stopScreen;
+
+      usingScreen = true;
+      document.getElementById('screen-btn').innerText = "Stop Share";
+
+    } catch (err) {
+      console.error("Screen share error:", err);
+    }
+
+  } else {
+    stopScreen();
+  }
+}
+
+// === STOP SCREEN SHARE ===
+function stopScreen() {
+  if (!usingScreen) return;
+
+  const camTrack = localStream.getVideoTracks()[0];
+
+  // Thay lại camera cho mọi peer
+  for (let user in peers) {
+    const sender = peers[user]
+      .getSenders()
+      .find(s => s.track.kind === 'video');
+    sender.replaceTrack(camTrack);
+  }
+
+  addVideo(username, localStream);
+
+  if (screenStream) {
+    screenStream.getTracks().forEach(t => t.stop());
+  }
+
+  usingScreen = false;
+  document.getElementById('screen-btn').innerText = "Share Screen";
 }
