@@ -295,7 +295,6 @@
 let ws = null;
 let username = '';
 let localStream = null;
-let screenStream = null;
 let peers = {};
 let videoGrid = document.getElementById('video-grid');
 let chatBox = document.getElementById('chat-box');
@@ -320,148 +319,88 @@ function connectWS() {
     const data = JSON.parse(e.data);
 
     if (data.type === 'user_list') {
-      // Nhận danh sách user có mặt trong phòng và tạo peer connection
-      data.users.forEach(u => {
-        if (u !== username) createPeerConnection(u);
-      });
-
+      data.users.forEach(u => createPeerConnection(u, true)); // true = mình tạo offer
     } else if (data.type === 'joined') {
-      addSystemMessage(`${data.username} đã vào phòng`);
-      if (data.username !== username) {
-        createPeerConnection(data.username);
-      }
-
-    } else if (data.type === 'left') {
-      addSystemMessage(`${data.username} đã rời phòng`);
-      removePeer(data.username);
-
-    } else if (data.type === 'message') {
-      addChatMessage(`${data.username}: ${data.message}`);
-
+      createPeerConnection(data.username, false); // người mới vào → họ sẽ tạo offer
     } else if (data.type === 'webrtc') {
       await handleSignaling(data);
+    } else if (data.type === 'message') {
+      addChatMessage(`${data.username}: ${data.message}`);
+    } else if (data.type === 'left') {
+      removePeer(data.username);
     }
-  };
-
-  ws.onclose = () => {
-    console.log('WebSocket closed, reconnecting...');
-    setTimeout(connectWS, 2000);
   };
 }
 
 async function startLocalVideo() {
-  try {
-    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-    addVideoElement(username, localStream);
-    updateControls();
-  } catch (err) {
-    console.error('Không thể truy cập camera hoặc mic:', err);
-    alert('Không thể truy cập camera hoặc mic');
-  }
+  localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+  addVideo(username, localStream);
 }
 
-function createPeerConnection(targetUser) {
+function createPeerConnection(targetUser, isInitiator) {
   if (peers[targetUser]) return;
-
   const pc = new RTCPeerConnection({
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' }
-    ]
+    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
   });
-
   peers[targetUser] = pc;
 
-  if (localStream) localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
-  if (screenStream) screenStream.getTracks().forEach(t => pc.addTrack(t, screenStream));
+  localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
-  pc.ontrack = (e) => {
-    addVideoElement(targetUser, e.streams[0]);
-  };
+  pc.ontrack = (e) => addVideo(targetUser, e.streams[0]);
 
   pc.onicecandidate = (e) => {
-    if (e.candidate) {
-      send({
-        type: 'ice-candidate',
-        data: e.candidate,
-        target: targetUser
-      });
-    }
+    if (e.candidate)
+      send({ type: 'ice-candidate', target: targetUser, data: e.candidate });
   };
 
-  // Người có username nhỏ hơn sẽ tạo offer
-  if (username < targetUser) {
+  if (isInitiator) {
     pc.createOffer()
       .then(o => pc.setLocalDescription(o))
-      .then(() => {
-        send({
-          type: 'offer',
-          data: pc.localDescription,
-          target: targetUser
-        });
-      })
-      .catch(err => console.error('Lỗi tạo offer:', err));
+      .then(() => send({ type: 'offer', target: targetUser, data: pc.localDescription }))
+      .catch(console.error);
   }
 }
 
 async function handleSignaling(data) {
-  const { signal_type, from_user, data: signalData } = data;
+  const { signal_type, from_user, data: s } = data;
   let pc = peers[from_user];
-  if (!pc) {
-    createPeerConnection(from_user);
-    pc = peers[from_user];
-  }
+  if (!pc) createPeerConnection(from_user, false), pc = peers[from_user];
 
-  try {
-    if (signal_type === 'offer') {
-      await pc.setRemoteDescription(signalData);
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      send({
-        type: 'answer',
-        data: pc.localDescription,
-        target: from_user
-      });
-
-    } else if (signal_type === 'answer') {
-      await pc.setRemoteDescription(signalData);
-
-    } else if (signal_type === 'ice-candidate') {
-      if (signalData) await pc.addIceCandidate(signalData);
-    }
-  } catch (err) {
-    console.error('Lỗi xử lý signaling:', err);
+  if (signal_type === 'offer') {
+    await pc.setRemoteDescription(s);
+    const ans = await pc.createAnswer();
+    await pc.setLocalDescription(ans);
+    send({ type: 'answer', target: from_user, data: pc.localDescription });
+  } else if (signal_type === 'answer') {
+    await pc.setRemoteDescription(s);
+  } else if (signal_type === 'ice-candidate') {
+    if (s) await pc.addIceCandidate(s);
   }
 }
 
-function addVideoElement(label, stream) {
-  let container = document.getElementById(`video-${label}`);
-  if (!container) {
-    container = document.createElement('div');
-    container.id = `video-${label}`;
-    container.className = 'video-container';
-    videoGrid.appendChild(container);
-
+function addVideo(label, stream) {
+  let el = document.getElementById('video-' + label);
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'video-' + label;
+    el.className = 'video-container';
     const video = document.createElement('video');
     video.autoplay = true;
     video.playsInline = true;
     video.muted = label === username;
-    container.appendChild(video);
-
-    const labelEl = document.createElement('div');
-    labelEl.className = 'video-label';
-    labelEl.textContent = label === username ? 'Bạn' : label;
-    container.appendChild(labelEl);
+    el.appendChild(video);
+    const span = document.createElement('div');
+    span.className = 'video-label';
+    span.textContent = label === username ? 'Bạn' : label;
+    el.appendChild(span);
+    videoGrid.appendChild(el);
   }
-
-  const video = container.querySelector('video');
-  if (video.srcObject !== stream) {
-    video.srcObject = stream;
-  }
+  const v = el.querySelector('video');
+  if (v.srcObject !== stream) v.srcObject = stream;
 }
 
 function removePeer(user) {
-  const el = document.getElementById(`video-${user}`);
+  const el = document.getElementById('video-' + user);
   if (el) el.remove();
   if (peers[user]) {
     peers[user].close();
@@ -469,87 +408,7 @@ function removePeer(user) {
   }
 }
 
-function toggleMic() {
-  if (!localStream) return;
-  const track = localStream.getAudioTracks()[0];
-  track.enabled = !track.enabled;
-  document.getElementById('mic-btn').textContent = track.enabled ? 'Mic On' : 'Mic Off';
-}
-
-function toggleCam() {
-  if (!localStream) return;
-  const track = localStream.getVideoTracks()[0];
-  track.enabled = !track.enabled;
-  document.getElementById('cam-btn').textContent = track.enabled ? 'Cam On' : 'Cam Off';
-}
-
-async function toggleScreen() {
-  if (screenStream) {
-    screenStream.getTracks().forEach(t => t.stop());
-    screenStream = null;
-    document.getElementById('screen-btn').textContent = 'Share Screen';
-    return;
-  }
-
-  try {
-    screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-    addVideoElement(username + ' (màn hình)', screenStream);
-    document.getElementById('screen-btn').textContent = 'Stop Share';
-
-    Object.values(peers).forEach(pc => {
-      pc.addTrack(screenStream.getVideoTracks()[0], screenStream);
-    });
-
-    screenStream.getTracks()[0].onended = () => toggleScreen();
-  } catch (err) {
-    console.log('Chia sẻ màn hình bị hủy');
-  }
-}
-
-function updateControls() {
-  const micOn = localStream?.getAudioTracks()[0]?.enabled ?? false;
-  const camOn = localStream?.getVideoTracks()[0]?.enabled ?? false;
-  document.getElementById('mic-btn').textContent = micOn ? 'Mic On' : 'Mic Off';
-  document.getElementById('cam-btn').textContent = camOn ? 'Cam On' : 'Cam Off';
-}
-
-function sendMessage() {
-  const input = document.getElementById('message');
-  const msg = input.value.trim();
-  if (!msg) return;
-  send({ type: 'message', message: msg });
-  input.value = '';
-}
-
-function addChatMessage(text) {
-  const div = document.createElement('div');
-  div.className = 'message';
-  div.textContent = text;
-  chatBox.appendChild(div);
-  chatBox.scrollTop = chatBox.scrollHeight;
-}
-
-function addSystemMessage(text) {
-  const div = document.createElement('div');
-  div.className = 'system';
-  div.textContent = text;
-  chatBox.appendChild(div);
-  chatBox.scrollTop = chatBox.scrollHeight;
-}
-
 function send(data) {
-  if (ws && ws.readyState === WebSocket.OPEN) {
+  if (ws && ws.readyState === WebSocket.OPEN)
     ws.send(JSON.stringify(data));
-  }
 }
-
-function leaveRoom() {
-  send({ type: 'leave' });
-  ws?.close();
-  location.reload();
-}
-
-// Gửi rời phòng khi đóng tab
-window.addEventListener('beforeunload', () => {
-  send({ type: 'leave' });
-});
