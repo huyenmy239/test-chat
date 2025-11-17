@@ -324,11 +324,9 @@ function connectWS() {
     const data = JSON.parse(e.data);
 
     if (data.type === 'user_list') {
-      // User mới → tạo offer đến tất cả user trước đó
       data.users.forEach(u => createPeerConnection(u, true));
 
     } else if (data.type === 'joined') {
-      // Có người mới vào → chờ họ gửi offer
       createPeerConnection(data.username, false);
 
     } else if (data.type === 'webrtc_signal') {
@@ -342,9 +340,7 @@ function connectWS() {
     }
   };
 
-  ws.onclose = () => {
-    console.log("WS closed");
-  };
+  ws.onclose = () => console.log("WS closed");
 }
 
 // === START CAMERA ===
@@ -367,21 +363,17 @@ function createPeerConnection(targetUser, isInitiator) {
 
   peers[targetUser] = pc;
 
-  // Add tracks
   if (localStream) {
     localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
   }
 
-  pc.ontrack = (e) => {
-    addVideo(targetUser, e.streams[0]);
-  };
+  pc.ontrack = (e) => addVideo(targetUser, e.streams[0]);
 
   pc.onicecandidate = (e) => {
     if (e.candidate)
       send({ type: 'ice-candidate', target: targetUser, data: e.candidate });
   };
 
-  // Initiator tạo offer
   if (isInitiator) {
     pc.createOffer()
       .then(offer => pc.setLocalDescription(offer))
@@ -389,8 +381,7 @@ function createPeerConnection(targetUser, isInitiator) {
         type: 'offer',
         target: targetUser,
         data: pc.localDescription
-      }))
-      .catch(console.error);
+      }));
   }
 }
 
@@ -418,7 +409,7 @@ async function handleSignaling(data) {
   }
 }
 
-// === ADD VIDEO TO UI ===
+// === ADD VIDEO ===
 function addVideo(label, stream) {
   let el = document.getElementById('video-' + label);
 
@@ -430,7 +421,7 @@ function addVideo(label, stream) {
     const video = document.createElement('video');
     video.autoplay = true;
     video.playsInline = true;
-    video.muted = label === username; // mute only self
+    video.muted = label === username;
 
     el.appendChild(video);
 
@@ -443,9 +434,7 @@ function addVideo(label, stream) {
   }
 
   const videoEl = el.querySelector('video');
-  if (videoEl.srcObject !== stream) {
-    videoEl.srcObject = stream;
-  }
+  if (videoEl.srcObject !== stream) videoEl.srcObject = stream;
 }
 
 // === REMOVE PEER ===
@@ -459,7 +448,7 @@ function removePeer(user) {
   }
 }
 
-// === SEND MESSAGE TO WS ===
+// === SEND WS MESSAGE ===
 function send(data) {
   if (ws && ws.readyState === WebSocket.OPEN)
     ws.send(JSON.stringify(data));
@@ -485,13 +474,4 @@ function leaveRoom() {
   send({ type: 'leave' });
   ws.close();
   location.reload();
-}
-
-// === TOGGLE MIC / CAM (Optional) ===
-function toggleMic() {
-  localStream.getAudioTracks().forEach(t => t.enabled = !t.enabled);
-}
-
-function toggleCam() {
-  localStream.getVideoTracks().forEach(t => t.enabled = !t.enabled);
 }
