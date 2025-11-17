@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Video Chat Room</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+    <!-- LOGIN -->
+    <div id="login-container">
+        <h2>Nhập tên để vào phòng</h2>
+        <input type="text" id="username" placeholder="Tên của bạn" autofocus />
+        <button onclick="joinRoom()">Vào phòng</button>
+    </div>
+
+    <!-- CHAT ROOM -->
+    <div id="room-container" style="display: none;">
+        <div id="header">
+            <h2>Phòng Video Chat</h2>
+            <button id="leave-btn" onclick="leaveRoom()">Thoát</button>
+        </div>
+
+        <div id="video-grid"></div>
+
+        <div id="controls">
+            <button id="mic-btn" onclick="toggleMic()">Mic On</button>
+            <button id="cam-btn" onclick="toggleCam()">Cam On</button>
+            <button id="screen-btn" onclick="toggleScreen()">Share Screen</button>
+        </div>
+
+        <div id="chat-section">
+            <div id="chat-box"></div>
+            <div id="chat-input">
+                <input type="text" id="message" placeholder="Nhập tin nhắn..." />
+                <button onclick="sendMessage()">Gửi</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
